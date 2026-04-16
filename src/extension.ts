@@ -225,7 +225,12 @@ class ListNotebookCellsTool implements vscode.LanguageModelTool<ListCellsInput> 
 // ---------------------------------------------------------------------------
 
 export function activate(context: vscode.ExtensionContext) {
-    updateVersionFiles();
+    // Defer version file updates so they don't run during notebook webview
+    // initialization. Synchronous fs I/O during activate() can block the
+    // event loop and cause notebook toolbars/content to fail to render.
+    const timer = setTimeout(() => updateVersionFiles(), 5000);
+    context.subscriptions.push({ dispose: () => clearTimeout(timer) });
+
     context.subscriptions.push(
         vscode.lm.registerTool('aicReadLiveCellOutput', new ReadLiveCellOutputTool()),
         vscode.lm.registerTool('aicListNotebookCells', new ListNotebookCellsTool())
