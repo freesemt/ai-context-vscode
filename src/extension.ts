@@ -21,6 +21,12 @@ function updateVersionFiles(): void {
         const dir = path.join(folder.uri.fsPath, '.github');
         const file = path.join(dir, 'vscode-version.txt');
         if (!fs.existsSync(dir)) continue;
+        // Skip write if file already contains the current version — avoids
+        // triggering VS Code file-watcher events on every startup, which can
+        // cause notebook editor webviews to reload unexpectedly.
+        try {
+            if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) continue;
+        } catch { /* fall through to write */ }
         fs.writeFileSync(file, content, 'utf8');
     }
 }
