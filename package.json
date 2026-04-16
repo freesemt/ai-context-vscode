@@ -1,0 +1,77 @@
+{
+  "name": "ai-context-vscode",
+  "displayName": "AI Context Tools for VS Code",
+  "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
+  "version": "0.2.0",
+  "publisher": "freesemt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/freesemt/ai-context-vscode"
+  },
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Notebooks",
+    "AI"
+  ],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languageModelTools": [
+      {
+        "name": "aicReadLiveCellOutput",
+        "displayName": "Read Live Notebook Cell Output",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "aicReadLiveCellOutput",
+        "modelDescription": "Read the output of a notebook cell directly from the live VS Code document model. Works even if the notebook has NOT been saved to disk, and has no output size limit. Use this tool INSTEAD of read_notebook_cell_output when that tool fails with 'output too large', or whenever you need unsaved cell outputs. Returns stdout, stderr, text/plain, and error outputs as text. Image outputs are noted but not returned.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cellNumber": {
+              "type": "number",
+              "description": "1-based cell number to read output from."
+            },
+            "notebookUri": {
+              "type": "string",
+              "description": "URI of the notebook (e.g. file:///path/to/notebook.ipynb). If omitted, uses the active notebook."
+            },
+            "maxCharacters": {
+              "type": "number",
+              "description": "Maximum characters to return. Default: 200000."
+            }
+          },
+          "required": ["cellNumber"]
+        }
+      },
+      {
+        "name": "aicListNotebookCells",
+        "displayName": "List Notebook Cells (Live)",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "aicListNotebookCells",
+        "modelDescription": "List all cells in a notebook with their type, execution count, source preview, and output summary. Reads from the live VS Code document model — no save required. Use this to discover which cells have outputs before reading them with aicReadLiveCellOutput.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "notebookUri": {
+              "type": "string",
+              "description": "URI of the notebook. If omitted, uses the active notebook."
+            }
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.99.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
