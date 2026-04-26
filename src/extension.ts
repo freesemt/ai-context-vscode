@@ -221,6 +221,189 @@ class ListNotebookCellsTool implements vscode.LanguageModelTool<ListCellsInput> 
 }
 
 // ---------------------------------------------------------------------------
+// Tool: aicKernelEval
+// ---------------------------------------------------------------------------
+//
+// Read-only-by-convention expression evaluator that talks to the live
+// notebook kernel via the Jupyter extension's kernels API.  The contract
+// is "send an expression, get its repr back" — the same thing you would
+// type at a REPL.  See ai-context-vscode issue #1.
+//
+// The Jupyter extension (ms-toolsai.jupyter) must be installed and a
+// kernel must already be running for the target notebook (i.e. the user
+// has executed at least one cell in this session).
+//
+// Behavior on busy kernel: returns `{ kernel_busy: true }` without
+// queuing.  Jupyter kernels are single-threaded for code execution, so
+// queuing a probe behind a multi-hour cell would defeat the purpose.
+
+interface KernelEvalInput {
+    expression: string;
+    notebookUri?: string;
+    timeoutMs?: number;
+    maxCharacters?: number;
+}
+
+async function getJupyterKernelsApi(): Promise<any | undefined> {
+    const ext = vscode.extensions.getExtension('ms-toolsai.jupyter');
+    if (!ext) return undefined;
+    if (!ext.isActive) {
+        await ext.activate();
+    }
+    return ext.exports;
+}
+
+function jsonResult(payload: object): vscode.LanguageModelToolResult {
+    return new vscode.LanguageModelToolResult([
+        new vscode.LanguageModelTextPart(JSON.stringify(payload, null, 2))
+    ]);
+}
+
+class KernelEvalTool implements vscode.LanguageModelTool<KernelEvalInput> {
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<KernelEvalInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { expression, notebookUri, timeoutMs, maxCharacters } = options.input;
+        if (!expression || typeof expression !== 'string') {
+            return jsonResult({ ok: false, error: 'expression is required (non-empty string).' });
+        }
+        const maxChars = maxCharacters ?? 8192;
+        const timeout = Math.max(100, timeoutMs ?? 5000);
+
+        let notebook: vscode.NotebookDocument;
+        try {
+            notebook = resolveNotebook(notebookUri);
+        } catch (e: any) {
+            return jsonResult({ ok: false, error: String(e?.message ?? e) });
+        }
+
+        const api = await getJupyterKernelsApi();
+        if (!api?.kernels?.getKernel) {
+            return jsonResult({
+                ok: false,
+                error: 'Jupyter extension (ms-toolsai.jupyter) is not installed or does not expose kernels.getKernel.'
+            });
+        }
+
+        let kernel: any;
+        try {
+            kernel = await api.kernels.getKernel(notebook.uri);
+        } catch (e: any) {
+            return jsonResult({ ok: false, error: `getKernel failed: ${String(e?.message ?? e)}` });
+        }
+        if (!kernel) {
+            return jsonResult({
+                ok: false,
+                error: 'No kernel for this notebook. Run a cell first to start the kernel.'
+            });
+        }
+
+        const status = kernel.status ?? 'unknown';
+        if (status === 'busy') {
+            return jsonResult({
+                ok: false,
+                kernel_busy: true,
+                status,
+                error: 'Kernel is busy executing another cell. Refusing to queue.'
+            });
+        }
+        if (status === 'dead' || status === 'terminating') {
+            return jsonResult({ ok: false, status, error: `Kernel status is "${status}".` });
+        }
+
+        // Wrap the expression in repr() so we always get a string back.
+        // The user contract is: "send an expression, not a statement".
+        // Use a single line so callers can pass any expression they would
+        // type at a REPL.  Errors (SyntaxError, NameError, etc.) surface
+        // through the kernel's error output channel, captured below.
+        const code = `print(repr((${expression})))`;
+
+        const tokenSrc = new vscode.CancellationTokenSource();
+        const timer = setTimeout(() => tokenSrc.cancel(), timeout);
+
+        let stdout = '';
+        let stderr = '';
+        let errInfo: { ename?: string; evalue?: string } | undefined;
+        let truncated = false;
+        let timedOut = false;
+
+        try {
+            const stream: AsyncIterable<any> = kernel.executeCode(code, tokenSrc.token);
+            for await (const output of stream) {
+                const items = output?.items ?? output ?? [];
+                for (const item of items) {
+                    const mime: string = item.mime ?? '';
+                    const data: Uint8Array = item.data;
+                    if (!data) continue;
+                    if (mime === 'application/vnd.code.notebook.error') {
+                        try {
+                            const parsed = JSON.parse(new TextDecoder().decode(data));
+                            errInfo = { ename: parsed.name, evalue: parsed.message };
+                            if (parsed.stack) stderr += String(parsed.stack);
+                        } catch {
+                            stderr += new TextDecoder().decode(data);
+                        }
+                        continue;
+                    }
+                    if (!isTextMime(mime)) continue;
+                    const text = new TextDecoder().decode(data);
+                    const target = mime === 'application/vnd.code.notebook.stderr' ? 'stderr' : 'stdout';
+                    const cur = target === 'stderr' ? stderr : stdout;
+                    const remaining = maxChars - (stdout.length + stderr.length);
+                    if (remaining <= 0) {
+                        truncated = true;
+                        break;
+                    }
+                    const chunk = text.length > remaining ? text.slice(0, remaining) : text;
+                    if (text.length > remaining) truncated = true;
+                    if (target === 'stderr') stderr = cur + chunk; else stdout = cur + chunk;
+                    if (truncated) break;
+                }
+                if (truncated) break;
+            }
+        } catch (e: any) {
+            if (tokenSrc.token.isCancellationRequested) {
+                timedOut = true;
+            } else {
+                return jsonResult({ ok: false, error: `executeCode failed: ${String(e?.message ?? e)}` });
+            }
+        } finally {
+            clearTimeout(timer);
+            tokenSrc.dispose();
+        }
+
+        if (timedOut) {
+            return jsonResult({
+                ok: false,
+                error: `Evaluation timed out after ${timeout}ms.`,
+                stdout_partial: stdout.trimEnd(),
+                stderr_partial: stderr.trimEnd(),
+            });
+        }
+
+        if (errInfo) {
+            return jsonResult({
+                ok: false,
+                ename: errInfo.ename,
+                evalue: errInfo.evalue,
+                stderr: stderr.trimEnd() || undefined,
+            });
+        }
+
+        return jsonResult({
+            ok: true,
+            kernel_busy: false,
+            status,
+            truncated,
+            repr: stdout.trimEnd(),
+            stderr: stderr ? stderr.trimEnd() : undefined,
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
 
@@ -233,7 +416,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.lm.registerTool('aicReadLiveCellOutput', new ReadLiveCellOutputTool()),
-        vscode.lm.registerTool('aicListNotebookCells', new ListNotebookCellsTool())
+        vscode.lm.registerTool('aicListNotebookCells', new ListNotebookCellsTool()),
+        vscode.lm.registerTool('aicKernelEval', new KernelEvalTool())
     );
 }
 

@@ -2,7 +2,7 @@
   "name": "ai-context-vscode",
   "displayName": "AI Context Tools for VS Code",
   "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "freesemt",
   "license": "MIT",
   "repository": {
@@ -59,6 +59,35 @@
               "description": "URI of the notebook. If omitted, uses the active notebook."
             }
           }
+        }
+      },
+      {
+        "name": "aicKernelEval",
+        "displayName": "Evaluate Expression in Live Notebook Kernel",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "aicKernelEval",
+        "modelDescription": "Evaluate a single Python expression against the live notebook kernel and return its repr. READ-ONLY BY CONVENTION: send only expressions you would type at a REPL (e.g. `run_sub.sv_history`, `len(my_list)`, `obj.attr`), not statements or assignments. Requires the Jupyter extension and a kernel that has already been started for the notebook (run any cell once). Returns `{ok: true, repr, status, truncated}` on success, `{ok: false, kernel_busy: true}` if the kernel is currently executing another cell (refuses to queue), or `{ok: false, ename, evalue}` on Python errors. Use this when you need to inspect live in-memory state (e.g. progress of a long-running optimization) without inserting and running a probe cell.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "A single Python expression to evaluate (not a statement). Will be wrapped as repr(...) and printed."
+            },
+            "notebookUri": {
+              "type": "string",
+              "description": "URI of the notebook (e.g. file:///path/to/notebook.ipynb). If omitted, uses the active notebook."
+            },
+            "timeoutMs": {
+              "type": "number",
+              "description": "Maximum milliseconds to wait for the kernel to complete the evaluation. Default: 5000."
+            },
+            "maxCharacters": {
+              "type": "number",
+              "description": "Maximum characters of repr text to return. Default: 8192."
+            }
+          },
+          "required": ["expression"]
         }
       }
     ]
