@@ -58,6 +58,25 @@ List all cells in a notebook with metadata and output summary.
 
 Returns: cell number, type (code/markdown), execution count, source preview, and output mime types.
 
+### `aicKernelEval`
+
+Evaluate a Python expression in the live Jupyter kernel of an open notebook and return the result as text. Built on `ms-toolsai.jupyter`'s `api.kernels.getKernel(uri)` API.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `expression` | string | Yes | Python expression to evaluate (e.g. `"run.live_status()"`) |
+| `notebookUri` | string | No | Notebook URI. Defaults to active notebook |
+| `maxCharacters` | number | No | Max characters to return (default: 200,000) |
+
+Returns the `repr` of the expression's value. Use this to query in-flight optimizer state, inspect arbitrary kernel-scope objects, or pull derived values without inserting and running a new cell.
+
+**Example use cases**:
+- Probe a long-running job: `aicKernelEval(expression="run_sub.live_status()")`
+- Inspect a fitted model mid-iteration: `aicKernelEval(expression="model.score_breakdown()")`
+- Read a deeply-nested attribute the human hasn't surfaced in a cell
+
+**Requires**: the `ms-toolsai.jupyter` extension and a running kernel for the target notebook.
+
 ---
 
 ## Installation
