@@ -404,6 +404,91 @@ class KernelEvalTool implements vscode.LanguageModelTool<KernelEvalInput> {
 }
 
 // ---------------------------------------------------------------------------
+// Tool: aicRunCellAsync
+// ---------------------------------------------------------------------------
+//
+// Fire-and-forget notebook cell execution.  Unlike the built-in
+// run_notebook_cell tool (which blocks until the cell finishes), this tool
+// selects the target cell in the notebook editor and triggers execution
+// without waiting for completion.  The invoke() returns immediately with
+// {ok: true, started: true}, so the chat stays responsive during long runs.
+//
+// After starting, use aicListNotebookCells to check whether the execution
+// count has incremented (indicating the cell finished), and
+// aicReadLiveCellOutput to read its output.
+//
+// If the kernel is already running another cell, VS Code queues the new
+// execution normally — same behaviour as clicking Run in the UI.
+
+interface RunCellAsyncInput {
+    cellNumber: number;
+    notebookUri?: string;
+}
+
+class RunCellAsyncTool implements vscode.LanguageModelTool<RunCellAsyncInput> {
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<RunCellAsyncInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { cellNumber, notebookUri } = options.input;
+
+        let notebook: vscode.NotebookDocument;
+        try {
+            notebook = resolveNotebook(notebookUri);
+        } catch (e: any) {
+            return jsonResult({ ok: false, error: String(e?.message ?? e) });
+        }
+
+        const cells = notebook.getCells();
+        if (cellNumber < 1 || cellNumber > cells.length) {
+            return jsonResult({
+                ok: false,
+                error: `cellNumber ${cellNumber} out of range (1–${cells.length})`
+            });
+        }
+
+        const cellIndex = cellNumber - 1;
+        const cell = cells[cellIndex];
+
+        if (cell.kind !== vscode.NotebookCellKind.Code) {
+            return jsonResult({ ok: false, error: `Cell ${cellNumber} is a markdown cell — cannot execute.` });
+        }
+
+        // Find an already-open editor for this notebook, or reveal it.
+        let editor = vscode.window.visibleNotebookEditors.find(
+            e => e.notebook.uri.toString() === notebook.uri.toString()
+        );
+        if (!editor) {
+            await vscode.commands.executeCommand('vscode.openWith', notebook.uri, 'jupyter-notebook');
+            editor = vscode.window.activeNotebookEditor;
+        }
+        if (!editor) {
+            return jsonResult({ ok: false, error: 'Could not open or find a notebook editor for this notebook.' });
+        }
+
+        // Select the target cell so notebook.cell.execute acts on it.
+        editor.selections = [new vscode.NotebookRange(cellIndex, cellIndex + 1)];
+
+        // Fire and forget — intentionally NOT awaited.
+        // awaiting notebook.cell.execute would block until the cell finishes,
+        // which defeats the purpose.  The Promise is deliberately dropped.
+        void vscode.commands.executeCommand('notebook.cell.execute');
+
+        const preview = cell.document.getText().split('\n')[0].slice(0, 60);
+        return jsonResult({
+            ok: true,
+            started: true,
+            cellNumber,
+            preview,
+            message: `Cell ${cellNumber} execution started (fire-and-forget). ` +
+                     `Use aicListNotebookCells to check completion (execution count changes), ` +
+                     `then aicReadLiveCellOutput to read the output.`
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
 
@@ -417,7 +502,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.lm.registerTool('aicReadLiveCellOutput', new ReadLiveCellOutputTool()),
         vscode.lm.registerTool('aicListNotebookCells', new ListNotebookCellsTool()),
-        vscode.lm.registerTool('aicKernelEval', new KernelEvalTool())
+        vscode.lm.registerTool('aicKernelEval', new KernelEvalTool()),
+        vscode.lm.registerTool('aicRunCellAsync', new RunCellAsyncTool()),
     );
 }
 

@@ -2,7 +2,7 @@
   "name": "ai-context-vscode",
   "displayName": "AI Context Tools for VS Code",
   "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "freesemt",
   "license": "MIT",
   "repository": {
@@ -88,6 +88,27 @@
             }
           },
           "required": ["expression"]
+        }
+      },
+      {
+        "name": "aicRunCellAsync",
+        "displayName": "Run Notebook Cell (Fire-and-Forget)",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "aicRunCellAsync",
+        "modelDescription": "Start executing a notebook cell without blocking the chat. Unlike run_notebook_cell (which blocks until completion), this tool triggers the cell and returns immediately with {ok: true, started: true}. Use this for long-running cells (optimizations, training runs, etc.) so the conversation stays responsive. After calling this, use aicListNotebookCells to check when the execution count changes (cell finished), then aicReadLiveCellOutput to read the output.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cellNumber": {
+              "type": "number",
+              "description": "1-based cell number to execute."
+            },
+            "notebookUri": {
+              "type": "string",
+              "description": "URI of the notebook (e.g. file:///path/to/notebook.ipynb). If omitted, uses the active notebook."
+            }
+          },
+          "required": ["cellNumber"]
         }
       }
     ]
