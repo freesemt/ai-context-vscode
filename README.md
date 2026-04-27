@@ -77,6 +77,25 @@ Returns the `repr` of the expression's value. Use this to query in-flight optimi
 
 **Requires**: the `ms-toolsai.jupyter` extension and a running kernel for the target notebook.
 
+### `aicRunCellAsync`
+
+Start executing a notebook cell without blocking the chat.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cellNumber` | number | Yes | 1-based cell number |
+| `notebookUri` | string | No | Notebook URI. Defaults to active notebook |
+
+Returns `{ok: true, started: true}` immediately — before the cell finishes.
+
+**Use this for** long-running cells (optimizers, training runs, multi-hour analyses) where `run_notebook_cell` would block the conversation.
+
+**Workflow after firing**:
+1. `aicListNotebookCells()` — execution count shows `*` while running, changes to a number when done
+2. `aicReadLiveCellOutput(cellNumber=N)` — read the output once finished
+
+**Requires**: the notebook must be open in the VS Code editor.
+
 ---
 
 ## Installation
