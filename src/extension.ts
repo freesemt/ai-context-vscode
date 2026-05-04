@@ -489,6 +489,59 @@ class RunCellAsyncTool implements vscode.LanguageModelTool<RunCellAsyncInput> {
 }
 
 // ---------------------------------------------------------------------------
+// AI Context Status Bar
+// ---------------------------------------------------------------------------
+
+function extractCurrentTask(statusMd: string): string {
+    const lines = statusMd.split('\n');
+    let inSection = false;
+    for (const line of lines) {
+        if (/^##\s.*Current Task/.test(line)) {
+            inSection = true;
+            continue;
+        }
+        if (inSection) {
+            if (line.startsWith('##')) { break; }
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#')) {
+                return trimmed;
+            }
+        }
+    }
+    return '';
+}
+
+const DISMISS_COMMAND = 'ai-context-vscode.dismissStatusBar';
+
+function showAiContextStatusBar(context: vscode.ExtensionContext): void {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) { return; }
+
+    const parts: string[] = [];
+    for (const folder of folders) {
+        const statusFile = path.join(folder.uri.fsPath, 'PROJECT_STATUS.md');
+        if (!fs.existsSync(statusFile)) { continue; }
+        try {
+            const content = fs.readFileSync(statusFile, 'utf8');
+            const task = extractCurrentTask(content);
+            parts.push(task ? `${folder.name} — ${task}` : folder.name);
+        } catch {
+            parts.push(folder.name);
+        }
+    }
+    if (parts.length === 0) { return; }
+
+    const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    item.text = `$(check) AI Context: ${parts.join('  |  ')}`;
+    item.tooltip = 'AI Context initialized. Click to dismiss.';
+    item.command = DISMISS_COMMAND;
+    item.show();
+
+    const cmd = vscode.commands.registerCommand(DISMISS_COMMAND, () => item.hide());
+    context.subscriptions.push(item, cmd);
+}
+
+// ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
 
@@ -498,6 +551,10 @@ export function activate(context: vscode.ExtensionContext) {
     // event loop and cause notebook toolbars/content to fail to render.
     const timer = setTimeout(() => updateVersionFiles(), 5000);
     context.subscriptions.push({ dispose: () => clearTimeout(timer) });
+
+    // Show AI Context status bar after a brief delay (after version files).
+    const statusTimer = setTimeout(() => showAiContextStatusBar(context), 6000);
+    context.subscriptions.push({ dispose: () => clearTimeout(statusTimer) });
 
     context.subscriptions.push(
         vscode.lm.registerTool('aicReadLiveCellOutput', new ReadLiveCellOutputTool()),
