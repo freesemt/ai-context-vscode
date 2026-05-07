@@ -1,9 +1,10 @@
 # ai-context-vscode
 
-VS Code extension providing two features for AI-assisted development:
+VS Code extension providing three features for AI-assisted development:
 
 1. **Language model tools** for reading live notebook cell outputs — no save required, no size limit
 2. **VS Code version recording** — writes `.github/vscode-version.txt` on startup (supersedes `vscode-version-recorder`)
+3. **Status bar indicator** — reads `PROJECT_STATUS.md` current task from all workspace folders at startup (6s delay), displays in the status bar; click to dismiss
 
 Part of the [AI Context Standard](https://github.com/freesemt/ai-context-standard) ecosystem.
 
@@ -31,6 +32,20 @@ On every startup, writes `.github/vscode-version.txt` in each workspace folder t
 ```
 
 This file is read by `init.prompt.md` (`alwaysApply: true`) to verify the VS Code version before running initialization prompts. This feature was previously provided by the separate `vscode-version-recorder` extension, which is now superseded by this extension.
+
+---
+
+## Status bar indicator
+
+On startup (after a 6-second delay), reads `PROJECT_STATUS.md` from each workspace folder and displays the current task in the VS Code status bar:
+
+```
+✅ AI Context: my-repo — Working on feature X  |  other-repo — Writing tests
+```
+
+Click the item to dismiss it. In a multi-root workspace, all repos' current tasks appear in one line separated by `|`.
+
+The current task is extracted from the `## 🎯 Current Task` section of each `PROJECT_STATUS.md`. If a folder has no `PROJECT_STATUS.md`, it is skipped silently.
 
 ---
 
