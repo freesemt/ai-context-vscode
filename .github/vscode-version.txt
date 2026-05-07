@@ -1,0 +1,4 @@
+# VS Code version used in this workspace
+# Auto-updated by vscode-version-recorder extension
+# Required for alwaysApply: true in init.prompt.md (VS Code 1.99+)
+1.119.0-insider
