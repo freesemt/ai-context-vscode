@@ -1,4 +1,4 @@
-<!-- AI Context Standard v0.9.2 - Adopted: 2026-05-07 -->
+<!-- AI Context Standard v0.10.0 - Adopted: 2026-05-12 -->
 # AI Assistant Initialization Guide — ai-context-vscode
 
 **Purpose**: Initialize AI context for working in this repository
@@ -15,7 +15,7 @@
    - `aicKernelEval` — evaluates a Python expression in the active kernel without inserting a cell
    - `aicListNotebookCells` — lists all cells with execution status (`*` = running, number = done)
 2. **VS Code version recording** — writes `.github/vscode-version.txt` in each workspace folder on startup (supersedes `vscode-version-recorder`)
-3. **Status bar indicator** (v0.3.2+) — reads `PROJECT_STATUS.md` current task from all workspace folders at startup (6s delay), displays in status bar; click to dismiss
+3. **Status bar indicator** (v0.4.0+) — reads current task at startup (6s delay) using the coordinator pattern (AI Context Standard v0.10.0): if `WORKSPACE_STATUS.md` exists in any workspace folder, uses it as coordinator; otherwise falls back to `PROJECT_STATUS.md` in all folders; click to dismiss
 
 Part of the [AI Context Standard](https://github.com/freesemt/ai-context-standard) ecosystem.
 

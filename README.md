@@ -4,7 +4,7 @@ VS Code extension providing three features for AI-assisted development:
 
 1. **Language model tools** for reading live notebook cell outputs — no save required, no size limit
 2. **VS Code version recording** — writes `.github/vscode-version.txt` on startup (supersedes `vscode-version-recorder`)
-3. **Status bar indicator** — reads `PROJECT_STATUS.md` current task from all workspace folders at startup (6s delay), displays in the status bar; click to dismiss
+3. **Status bar indicator** — reads current task at startup (6s delay) using the coordinator pattern; click to dismiss
 
 Part of the [AI Context Standard](https://github.com/freesemt/ai-context-standard) ecosystem.
 
@@ -37,15 +37,18 @@ This file is read by `init.prompt.md` (`alwaysApply: true`) to verify the VS Cod
 
 ## Status bar indicator
 
-On startup (after a 6-second delay), reads `PROJECT_STATUS.md` from each workspace folder and displays the current task in the VS Code status bar:
+On startup (after a 6-second delay), displays the current task in the VS Code status bar. Uses the **coordinator pattern** from [AI Context Standard v0.10.0](https://github.com/freesemt/ai-context-standard):
+
+- **Multi-root workspace with coordinator**: If any workspace folder contains `WORKSPACE_STATUS.md`, that repo is the coordinator. Its `## 🎯 Current Task` section is shown as a single status bar entry.
+- **Single-repo or no coordinator**: Falls back to scanning all workspace folders for `PROJECT_STATUS.md` and displaying each repo's current task, separated by `|`.
 
 ```
-✅ AI Context: my-repo — Working on feature X  |  other-repo — Writing tests
+✅ AI Context: Working on feature X
 ```
 
-Click the item to dismiss it. In a multi-root workspace, all repos' current tasks appear in one line separated by `|`.
+Click the item to dismiss it. If no status file is found, the status bar item is not shown.
 
-The current task is extracted from the `## 🎯 Current Task` section of each `PROJECT_STATUS.md`. If a folder has no `PROJECT_STATUS.md`, it is skipped silently.
+The current task is extracted from the `## 🎯 Current Task` section of the status file. The first non-blank, non-heading line after the section header is used.
 
 ---
 
@@ -115,6 +118,14 @@ Returns `{ok: true, started: true}` immediately — before the cell finishes.
 
 ## Installation
 
+### For everyone (recommended)
+
+1. Go to the [latest release](https://github.com/freesemt/ai-context-vscode/releases/latest)
+2. Download `ai-context-vscode-x.x.x.vsix`
+3. Open VS Code → Extensions panel (`Ctrl+Shift+X`)
+4. Click `···` (top-right menu) → **Install from VSIX...**
+5. Select the downloaded file and reload VS Code
+
 ### From source (development)
 
 ```bash
@@ -127,10 +138,8 @@ Then press **F5** in VS Code to launch an Extension Development Host, or package
 
 ```bash
 npx @vscode/vsce package
-code --install-extension ai-context-vscode-0.2.0.vsix
+code --install-extension ai-context-vscode-0.4.0.vsix
 ```
-
----
 
 ## Relationship to ai-context-tools
 

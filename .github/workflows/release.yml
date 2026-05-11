@@ -1,0 +1,47 @@
+name: Release VSIX
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build and release VSIX
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Build VSIX
+        run: vsce package
+
+      - name: Get version from package.json
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and upload VSIX
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## Installation
+
+            1. Download `ai-context-vscode-${{ steps.version.outputs.version }}.vsix` below
+            2. Open VS Code → Extensions panel (`Ctrl+Shift+X`)
+            3. Click `···` (top-right) → **Install from VSIX...**
+            4. Select the downloaded file
+          files: ai-context-vscode-${{ steps.version.outputs.version }}.vsix

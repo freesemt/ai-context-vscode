@@ -517,18 +517,40 @@ function showAiContextStatusBar(context: vscode.ExtensionContext): void {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) { return; }
 
+    // Coordinator pattern (AI Context Standard v0.10.0):
+    // If any workspace folder has WORKSPACE_STATUS.md, it is the coordinator.
+    // Use only its current task. Fall back to PROJECT_STATUS.md scanning for
+    // single-repo workspaces (backward compatible).
     const parts: string[] = [];
-    for (const folder of folders) {
-        const statusFile = path.join(folder.uri.fsPath, 'PROJECT_STATUS.md');
-        if (!fs.existsSync(statusFile)) { continue; }
+
+    const coordinatorFolder = folders.find(f =>
+        fs.existsSync(path.join(f.uri.fsPath, 'WORKSPACE_STATUS.md'))
+    );
+
+    if (coordinatorFolder) {
+        const wsFile = path.join(coordinatorFolder.uri.fsPath, 'WORKSPACE_STATUS.md');
         try {
-            const content = fs.readFileSync(statusFile, 'utf8');
+            const content = fs.readFileSync(wsFile, 'utf8');
             const task = extractCurrentTask(content);
-            parts.push(task ? `${folder.name} — ${task}` : folder.name);
+            parts.push(task ? task : coordinatorFolder.name);
         } catch {
-            parts.push(folder.name);
+            parts.push(coordinatorFolder.name);
+        }
+    } else {
+        // Single-repo fallback: scan all folders for PROJECT_STATUS.md
+        for (const folder of folders) {
+            const statusFile = path.join(folder.uri.fsPath, 'PROJECT_STATUS.md');
+            if (!fs.existsSync(statusFile)) { continue; }
+            try {
+                const content = fs.readFileSync(statusFile, 'utf8');
+                const task = extractCurrentTask(content);
+                parts.push(task ? `${folder.name} — ${task}` : folder.name);
+            } catch {
+                parts.push(folder.name);
+            }
         }
     }
+
     if (parts.length === 0) { return; }
 
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
