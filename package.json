@@ -2,7 +2,7 @@
   "name": "ai-context-vscode",
   "displayName": "AI Context Tools for VS Code",
   "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "freesemt",
   "license": "MIT",
   "repository": {
@@ -128,7 +128,7 @@
       "notebook/toolbar": [
         {
           "command": "aic.clearAllOutputsGuarded",
-          "when": "notebookType == 'jupyter-notebook'",
+          "when": "notebookType == 'jupyter-notebook' && aic.hasActiveWorker",
           "group": "navigation@100"
         }
       ]

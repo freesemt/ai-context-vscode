@@ -564,6 +564,41 @@ function showAiContextStatusBar(context: vscode.ExtensionContext): void {
 }
 
 // ---------------------------------------------------------------------------
+// Shared helper: query whether any aic-active-* thread is alive in a kernel.
+// Returns false (rather than throwing) on any failure so callers stay simple.
+// ---------------------------------------------------------------------------
+
+async function queryAicActiveWorker(notebookUri: vscode.Uri): Promise<boolean> {
+    const api = await getJupyterKernelsApi();
+    if (!api?.kernels?.getKernel) { return false; }
+    const kernel = await api.kernels.getKernel(notebookUri);
+    if (!kernel || kernel.status === 'dead' || kernel.status === 'terminating') { return false; }
+    // Skip when busy — avoid queueing behind an active cell execution.
+    if (kernel.status === 'busy') { return false; }
+    const code =
+        `print(repr(any(t.is_alive() for t in ` +
+        `__import__('threading').enumerate() ` +
+        `if t.name.startswith('aic-active-'))))` ;
+    const tokenSrc = new vscode.CancellationTokenSource();
+    const timer = setTimeout(() => tokenSrc.cancel(), 1500);
+    let result = false;
+    try {
+        const stream: AsyncIterable<any> = kernel.executeCode(code, tokenSrc.token);
+        for await (const output of stream) {
+            const items = output?.items ?? output ?? [];
+            for (const item of items) {
+                if (isTextMime(item.mime ?? '') &&
+                    new TextDecoder().decode(item.data).trim() === 'True') {
+                    result = true;
+                }
+            }
+        }
+    } catch { /* timeout or kernel error → treat as no active worker */ }
+    finally { clearTimeout(timer); tokenSrc.dispose(); }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
 
@@ -601,35 +636,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             let hasActiveWorker = false;
             try {
-                const api = await getJupyterKernelsApi();
-                if (api?.kernels?.getKernel) {
-                    const kernel = await api.kernels.getKernel(editor.notebook.uri);
-                    if (kernel && kernel.status !== 'dead' && kernel.status !== 'terminating') {
-                        const code =
-                            `print(repr(any(t.is_alive() for t in ` +
-                            `__import__('threading').enumerate() ` +
-                            `if t.name.startswith('aic-active-'))))`;
-                        const tokenSrc = new vscode.CancellationTokenSource();
-                        const timer = setTimeout(() => tokenSrc.cancel(), 2000);
-                        try {
-                            const stream: AsyncIterable<any> =
-                                kernel.executeCode(code, tokenSrc.token);
-                            for await (const output of stream) {
-                                const items = output?.items ?? output ?? [];
-                                for (const item of items) {
-                                    const mime: string = item.mime ?? '';
-                                    if (!isTextMime(mime)) { continue; }
-                                    const text =
-                                        new TextDecoder().decode(item.data).trim();
-                                    if (text === 'True') { hasActiveWorker = true; }
-                                }
-                            }
-                        } finally {
-                            clearTimeout(timer);
-                            tokenSrc.dispose();
-                        }
-                    }
-                }
+                hasActiveWorker = await queryAicActiveWorker(editor.notebook.uri);
             } catch {
                 // Kernel unavailable or query failed — proceed without guard.
             }
@@ -649,6 +656,42 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
     context.subscriptions.push(guardedClear);
+
+    // Poll the active notebook every 5 seconds to keep the 'aic.hasActiveWorker'
+    // context key current.  The toolbar 'when' clause uses this key so the guarded
+    // clear button appears only when an aic-active-* thread is actually running,
+    // and disappears automatically once the job finishes.
+    let _pollInterval: ReturnType<typeof setInterval> | undefined;
+
+    async function refreshAicWorkerContext(): Promise<void> {
+        const editor = vscode.window.activeNotebookEditor;
+        let hasActive = false;
+        if (editor) {
+            try { hasActive = await queryAicActiveWorker(editor.notebook.uri); } catch { /* ignore */ }
+        }
+        vscode.commands.executeCommand('setContext', 'aic.hasActiveWorker', hasActive);
+    }
+
+    vscode.commands.executeCommand('setContext', 'aic.hasActiveWorker', false);
+
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveNotebookEditor(editor => {
+            if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = undefined; }
+            if (editor) {
+                refreshAicWorkerContext();
+                _pollInterval = setInterval(refreshAicWorkerContext, 5000);
+            } else {
+                vscode.commands.executeCommand('setContext', 'aic.hasActiveWorker', false);
+            }
+        })
+    );
+    context.subscriptions.push({ dispose: () => { if (_pollInterval) { clearInterval(_pollInterval); } } });
+
+    // Probe any notebook that is already active when the extension activates.
+    refreshAicWorkerContext();
+    if (vscode.window.activeNotebookEditor) {
+        _pollInterval = setInterval(refreshAicWorkerContext, 5000);
+    }
 }
 
 export function deactivate() {}
