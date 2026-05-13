@@ -584,6 +584,71 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.lm.registerTool('aicKernelEval', new KernelEvalTool()),
         vscode.lm.registerTool('aicRunCellAsync', new RunCellAsyncTool()),
     );
+
+    // Guarded "Clear All Outputs" command.
+    // Before clearing, queries the kernel for any live threads whose name
+    // starts with 'aic-active-'.  If found, shows a confirmation modal.
+    // Falls through to the native command when the kernel is unavailable,
+    // the query times out, or no active threads are found.
+    const guardedClear = vscode.commands.registerCommand(
+        'aic.clearAllOutputsGuarded',
+        async () => {
+            const editor = vscode.window.activeNotebookEditor;
+            if (!editor) {
+                await vscode.commands.executeCommand('notebook.clearAllCellsOutputs');
+                return;
+            }
+
+            let hasActiveWorker = false;
+            try {
+                const api = await getJupyterKernelsApi();
+                if (api?.kernels?.getKernel) {
+                    const kernel = await api.kernels.getKernel(editor.notebook.uri);
+                    if (kernel && kernel.status !== 'dead' && kernel.status !== 'terminating') {
+                        const code =
+                            `print(repr(any(t.is_alive() for t in ` +
+                            `__import__('threading').enumerate() ` +
+                            `if t.name.startswith('aic-active-'))))`;
+                        const tokenSrc = new vscode.CancellationTokenSource();
+                        const timer = setTimeout(() => tokenSrc.cancel(), 2000);
+                        try {
+                            const stream: AsyncIterable<any> =
+                                kernel.executeCode(code, tokenSrc.token);
+                            for await (const output of stream) {
+                                const items = output?.items ?? output ?? [];
+                                for (const item of items) {
+                                    const mime: string = item.mime ?? '';
+                                    if (!isTextMime(mime)) { continue; }
+                                    const text =
+                                        new TextDecoder().decode(item.data).trim();
+                                    if (text === 'True') { hasActiveWorker = true; }
+                                }
+                            }
+                        } finally {
+                            clearTimeout(timer);
+                            tokenSrc.dispose();
+                        }
+                    }
+                }
+            } catch {
+                // Kernel unavailable or query failed — proceed without guard.
+            }
+
+            if (hasActiveWorker) {
+                const choice = await vscode.window.showWarningMessage(
+                    'A background task (aic-active-*) is running in this kernel. ' +
+                    'Clearing outputs will not stop it, but the results will be lost. ' +
+                    'Clear anyway?',
+                    { modal: true },
+                    'Clear',
+                );
+                if (choice !== 'Clear') { return; }
+            }
+
+            await vscode.commands.executeCommand('notebook.clearAllCellsOutputs');
+        }
+    );
+    context.subscriptions.push(guardedClear);
 }
 
 export function deactivate() {}

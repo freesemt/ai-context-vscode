@@ -2,7 +2,7 @@
   "name": "ai-context-vscode",
   "displayName": "AI Context Tools for VS Code",
   "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "freesemt",
   "license": "MIT",
   "repository": {
@@ -116,8 +116,23 @@
       {
         "command": "ai-context-vscode.dismissStatusBar",
         "title": "Dismiss AI Context Status Bar"
+      },
+      {
+        "command": "aic.clearAllOutputsGuarded",
+        "title": "Clear All Outputs (guarded)",
+        "icon": "$(clear-all)",
+        "category": "AI Context"
       }
-    ]
+    ],
+    "menus": {
+      "notebook/toolbar": [
+        {
+          "command": "aic.clearAllOutputsGuarded",
+          "when": "notebookType == 'jupyter-notebook'",
+          "group": "navigation@100"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
