@@ -1,10 +1,11 @@
 # ai-context-vscode
 
-VS Code extension providing three features for AI-assisted development:
+VS Code extension providing four features for AI-assisted development:
 
 1. **Language model tools** for reading live notebook cell outputs — no save required, no size limit
 2. **VS Code version recording** — writes `.github/vscode-version.txt` on startup (supersedes `vscode-version-recorder`)
 3. **Status bar indicator** — reads current task at startup (6s delay) using the coordinator pattern; click to dismiss
+4. **Guarded Clear All Outputs** — toolbar button that checks for active background threads before wiping notebook outputs
 
 Part of the [AI Context Standard](https://github.com/freesemt/ai-context-standard) ecosystem.
 
@@ -116,6 +117,42 @@ Returns `{ok: true, started: true}` immediately — before the cell finishes.
 
 ---
 
+## Guarded Clear All Outputs
+
+The standard **Clear All Outputs** toolbar button in Jupyter notebooks wipes all cell outputs immediately, with no warning — even if a long-running background job (optimizer, training run) is actively writing to those cells.
+
+This extension adds a parallel toolbar button **`aic.clearAllOutputsGuarded`** ($(clear-all) icon) that checks first:
+
+1. Sends a silent Python query to the live kernel:
+   ```python
+   any(t.is_alive() for t in threading.enumerate()
+       if t.name.startswith('aic-active-'))
+   ```
+2. If any `aic-active-*` thread is alive → shows a **confirmation modal** before clearing.
+3. If none are found, the kernel is unavailable, or the query times out (2s) → clears immediately.
+
+**Fall-throughs** (clears with no prompt):
+- No notebook is open
+- Kernel is dead or not started
+- 2-second query timeout
+- No `aic-active-*` threads found
+
+### How libraries opt in
+
+Name background daemon threads with the `aic-active-` prefix:
+
+```python
+import threading
+
+t = threading.Thread(target=my_long_job, daemon=True, name='aic-active-optimizer')
+t.start()
+```
+
+The extension is framework-agnostic — any Python library can use this convention.
+[molass-legacy](https://github.com/biosaxs-dev/molass-legacy) adopts it for its in-process optimizer and watch threads.
+
+---
+
 ## Installation
 
 ### For everyone (recommended)
@@ -138,7 +175,7 @@ Then press **F5** in VS Code to launch an Extension Development Host, or package
 
 ```bash
 npx @vscode/vsce package
-code --install-extension ai-context-vscode-0.4.0.vsix
+code --install-extension ai-context-vscode-0.5.0.vsix
 ```
 
 ## Relationship to ai-context-tools
