@@ -2,7 +2,7 @@
 
 VS Code extension providing four features for AI-assisted development:
 
-1. **Language model tools** for reading live notebook cell outputs — no save required, no size limit
+1. **Language model tools** for reading and editing live notebook cell outputs — no save required, no size limit
 2. **VS Code version recording** — writes `.github/vscode-version.txt` on startup (supersedes `vscode-version-recorder`)
 3. **Status bar indicator** — reads current task at startup (6s delay) using the coordinator pattern; click to dismiss
 4. **Guarded Clear All Outputs** — toolbar button that checks for active background threads before wiping notebook outputs
@@ -115,6 +115,22 @@ Returns `{ok: true, started: true}` immediately — before the cell finishes.
 
 **Requires**: the notebook must be open in the VS Code editor.
 
+### `aicEditNotebookCell`
+
+Write new source into a notebook cell using VS Code's live document model.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cellNumber` | number | Yes | 1-based cell number |
+| `newSource` | string | Yes | Replacement source text |
+| `notebookUri` | string | No | Notebook URI. Defaults to active notebook |
+
+Returns `{ok: true, cellNumber, language}` on success. Markdown cells are scrolled into view after the edit so VS Code re-renders their HTML immediately — no manual click required.
+
+**Why not `edit_notebook_file`?** That tool writes to disk. When a notebook is open in VS Code, the in-memory model shadows the disk write — the change is invisible until the editor is reloaded. `aicEditNotebookCell` bypasses this by editing the live document model directly, exactly as a human would type in the cell.
+
+**Use this for** editing cell source (both code and markdown) while the notebook is open. For notebooks not currently open in VS Code, `edit_notebook_file` remains the correct tool.
+
 ---
 
 ## Guarded Clear All Outputs
@@ -175,7 +191,7 @@ Then press **F5** in VS Code to launch an Extension Development Host, or package
 
 ```bash
 npx @vscode/vsce package
-code --install-extension ai-context-vscode-0.5.0.vsix
+code --install-extension ai-context-vscode-0.5.3.vsix
 ```
 
 ## Relationship to ai-context-tools

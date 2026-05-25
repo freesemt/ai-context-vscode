@@ -2,7 +2,7 @@
   "name": "ai-context-vscode",
   "displayName": "AI Context Tools for VS Code",
   "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "publisher": "freesemt",
   "license": "MIT",
   "repository": {
@@ -109,6 +109,31 @@
             }
           },
           "required": ["cellNumber"]
+        }
+      },
+      {
+        "name": "aicEditNotebookCell",
+        "displayName": "Edit Notebook Cell Source (Live Model)",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "aicEditNotebookCell",
+        "modelDescription": "Replace the source of a notebook cell by writing directly into VS Code's live document model via WorkspaceEdit. Use this INSTEAD of edit_notebook_file when a notebook is open in the editor — edit_notebook_file writes to disk and is silently ignored while the notebook is open in memory. This tool applies the same edit path as a human typing in the cell. The notebook is marked dirty after the edit; the user saves with Ctrl+S. Returns {ok: true, cellNumber, language, message} on success.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cellNumber": {
+              "type": "number",
+              "description": "1-based cell number to edit."
+            },
+            "newSource": {
+              "type": "string",
+              "description": "The complete new source code (or markdown) for the cell. Replaces the entire existing content."
+            },
+            "notebookUri": {
+              "type": "string",
+              "description": "URI of the notebook (e.g. file:///path/to/notebook.ipynb). If omitted, uses the active notebook."
+            }
+          },
+          "required": ["cellNumber", "newSource"]
         }
       }
     ],

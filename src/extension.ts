@@ -599,6 +599,96 @@ async function queryAicActiveWorker(notebookUri: vscode.Uri): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Tool: aicEditNotebookCell
+// ---------------------------------------------------------------------------
+//
+// Writes new source into a notebook cell via VS Code's WorkspaceEdit API,
+// operating on the live document model rather than the on-disk .ipynb file.
+//
+// Background: the built-in edit_notebook_file tool writes to disk. When VS
+// Code has the notebook open in memory, the in-memory model shadows the disk
+// write — the tool returns 'success' but no change is visible in the editor.
+// aicEditNotebookCell bypasses this by applying a WorkspaceEdit directly to
+// the cell's TextDocument (same path as a human typing in the editor).
+// See freesemt/ai-context-vscode issue #4.
+
+interface EditNotebookCellInput {
+    cellNumber: number;
+    newSource: string;
+    notebookUri?: string;
+}
+
+class EditNotebookCellTool implements vscode.LanguageModelTool<EditNotebookCellInput> {
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<EditNotebookCellInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { cellNumber, newSource, notebookUri } = options.input;
+
+        if (typeof newSource !== 'string') {
+            return jsonResult({ ok: false, error: 'newSource is required (string).' });
+        }
+
+        let notebook: vscode.NotebookDocument;
+        try {
+            notebook = resolveNotebook(notebookUri);
+        } catch (e: any) {
+            return jsonResult({ ok: false, error: String(e?.message ?? e) });
+        }
+
+        const cells = notebook.getCells();
+        if (cellNumber < 1 || cellNumber > cells.length) {
+            return jsonResult({
+                ok: false,
+                error: `cellNumber ${cellNumber} out of range (1–${cells.length})`
+            });
+        }
+
+        const cell = cells[cellNumber - 1];
+        const cellDoc = cell.document;
+
+        // Replace the entire cell source using a WorkspaceEdit on the cell's
+        // TextDocument URI. This writes into VS Code's live document model and
+        // marks the notebook as modified (dirty) — identical to a human editing
+        // the cell interactively.
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+            cellDoc.positionAt(0),
+            cellDoc.positionAt(cellDoc.getText().length)
+        );
+        edit.replace(cellDoc.uri, fullRange, newSource);
+
+        const success = await vscode.workspace.applyEdit(edit);
+        if (!success) {
+            return jsonResult({ ok: false, error: 'WorkspaceEdit was rejected by VS Code.' });
+        }
+
+        // Reveal the edited cell so VS Code re-renders its markdown HTML.
+        // Markdown cells cache their rendered output and only refresh when
+        // they become visible in the viewport; revealRange forces that refresh.
+        for (const editor of vscode.window.visibleNotebookEditors) {
+            if (editor.notebook === notebook) {
+                editor.revealRange(
+                    new vscode.NotebookRange(cellNumber - 1, cellNumber - 1),
+                    vscode.NotebookEditorRevealType.InCenterIfOutsideViewport
+                );
+                break;
+            }
+        }
+
+        const kind = cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown';
+        return jsonResult({
+            ok: true,
+            cellNumber,
+            language: kind,
+            message: `Cell ${cellNumber} (${kind}) source updated in VS Code model. ` +
+                     `Save the notebook (Ctrl+S) to persist to disk.`
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
 
@@ -618,6 +708,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.lm.registerTool('aicListNotebookCells', new ListNotebookCellsTool()),
         vscode.lm.registerTool('aicKernelEval', new KernelEvalTool()),
         vscode.lm.registerTool('aicRunCellAsync', new RunCellAsyncTool()),
+        vscode.lm.registerTool('aicEditNotebookCell', new EditNotebookCellTool()),
     );
 
     // Guarded "Clear All Outputs" command.
