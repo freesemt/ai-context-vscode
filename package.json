@@ -2,7 +2,7 @@
   "name": "ai-context-vscode",
   "displayName": "AI Context Tools for VS Code",
   "description": "Language model tools for live notebook outputs + automatic VS Code version recording",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "publisher": "freesemt",
   "license": "MIT",
   "repository": {
@@ -66,13 +66,13 @@
         "displayName": "Evaluate Expression in Live Notebook Kernel",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "aicKernelEval",
-        "modelDescription": "Evaluate a single Python expression against the live notebook kernel and return its repr. READ-ONLY BY CONVENTION: send only expressions you would type at a REPL (e.g. `run_sub.sv_history`, `len(my_list)`, `obj.attr`), not statements or assignments. Requires the Jupyter extension and a kernel that has already been started for the notebook (run any cell once). Returns `{ok: true, repr, status, truncated}` on success, `{ok: false, kernel_busy: true}` if the kernel is currently executing another cell (refuses to queue), or `{ok: false, ename, evalue}` on Python errors. Use this when you need to inspect live in-memory state (e.g. progress of a long-running optimization) without inserting and running a probe cell.",
+        "modelDescription": "Evaluate a Python expression or multi-line code block against the live notebook kernel and return its repr. Two modes: (1) Single-line expression — same as a REPL, e.g. `run_sub.sv_history`; (2) Multi-line block — imports + assignments + a final expression, e.g. 'import numpy as np\nA = np.column_stack([x, y])\nA.mean(axis=0)'. In block mode the last line is repr'd if it is an expression; statements (import, assignment, etc.) as the last line produce stdout only. READ-ONLY BY CONVENTION: avoid side-effecting statements. Requires the Jupyter extension and a running kernel. Returns `{ok: true, repr, status, truncated}` on success, `{ok: false, kernel_busy: true}` if the kernel is executing another cell, or `{ok: false, ename, evalue}` on Python errors.",
         "inputSchema": {
           "type": "object",
           "properties": {
             "expression": {
               "type": "string",
-              "description": "A single Python expression to evaluate (not a statement). Will be wrapped as repr(...) and printed."
+              "description": "A Python expression or multi-line code block to evaluate. Single-line: any expression (e.g. 'run_sub.sv_history'). Multi-line: statements + final expression separated by newlines (e.g. 'import numpy as np\nA = np.column_stack([x, y])\nA.mean(axis=0)'). The last line is repr'd if it is an expression."
             },
             "notebookUri": {
               "type": "string",

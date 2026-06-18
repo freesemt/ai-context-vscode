@@ -259,6 +259,40 @@ function jsonResult(payload: object): vscode.LanguageModelToolResult {
     ]);
 }
 
+/**
+ * Build the kernel code string for aicKernelEval.
+ *
+ * - Single-line input: wrap in `print(repr((...)))` — classic REPL-style.
+ * - Multi-line input (block): execute as-is, but replace the last line with
+ *   a `print(repr(...))` wrapper when the last line looks like an expression
+ *   rather than a statement (import, assignment, def, for, etc.).
+ *   This lets callers send "import X\nA = ...\nsome_expression" and get
+ *   the repr of the final result back.
+ */
+function buildKernelEvalCode(expression: string): string {
+    if (!expression.includes('\n')) {
+        // Single expression — existing behavior.
+        return `print(repr((${expression})))`;
+    }
+    // Multi-line block: inspect the last non-empty line.
+    const lines = expression.trimEnd().split('\n');
+    const lastLine = lines[lines.length - 1].trimStart();
+
+    // Patterns that indicate the last line is a statement, not an expression.
+    const isStatement =
+        /^(import |from |def |class |async def |for |async for |while |with |async with |if |try:|except|finally:|elif |else:|return |del |assert |raise |pass\b|break\b|continue\b|#)/.test(lastLine) ||
+        // assignment: "name =" / "name +=" / "a.b =" etc. but NOT "==" / "!=" / "<=" / ">="
+        /^[a-zA-Z_][a-zA-Z0-9_.[\]"'*,\s]*\s*(?<![!=<>])=(?!=)/.test(lastLine);
+
+    if (isStatement) {
+        // No repr-able last expression — just execute the block and return stdout.
+        return expression;
+    }
+    // Replace the last line with a repr version.
+    lines[lines.length - 1] = `print(repr((${lastLine})))`;
+    return lines.join('\n');
+}
+
 class KernelEvalTool implements vscode.LanguageModelTool<KernelEvalInput> {
 
     async invoke(
@@ -313,12 +347,13 @@ class KernelEvalTool implements vscode.LanguageModelTool<KernelEvalInput> {
             return jsonResult({ ok: false, status, error: `Kernel status is "${status}".` });
         }
 
-        // Wrap the expression in repr() so we always get a string back.
-        // The user contract is: "send an expression, not a statement".
-        // Use a single line so callers can pass any expression they would
-        // type at a REPL.  Errors (SyntaxError, NameError, etc.) surface
-        // through the kernel's error output channel, captured below.
-        const code = `print(repr((${expression})))`;
+        // Build the code to execute.
+        // Single-line expression: wrap in print(repr(...)) for clean repr output.
+        // Multi-line block (contains \n): execute as-is with the last line
+        // repr'd if it looks like an expression rather than a statement.
+        // This allows callers to send imports + assignments + a final expression
+        // (e.g. "import numpy as np\nA = np.array([1,2,3])\nA.mean()").
+        const code = buildKernelEvalCode(expression);
 
         const tokenSrc = new vscode.CancellationTokenSource();
         const timer = setTimeout(() => tokenSrc.cancel(), timeout);

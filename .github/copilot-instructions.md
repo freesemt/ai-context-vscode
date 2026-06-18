@@ -12,7 +12,7 @@
 1. **Language model tools** for reading live notebook cell outputs — no save required, no size limit:
    - `aicReadLiveCellOutput` — reads output directly from the VS Code document model
    - `aicRunCellAsync` — fires a notebook cell and returns immediately (fire-and-forget)
-   - `aicKernelEval` — evaluates a Python expression in the active kernel without inserting a cell
+   - `aicKernelEval` — evaluates a Python expression **or multi-line code block** in the active kernel without inserting a cell; single-line: wraps as `repr(...)`; multi-line: executes block + repr's final expression if it is an expression (v0.5.5, fixes issue #3)
    - `aicListNotebookCells` — lists all cells with execution status (`*` = running, number = done)
 2. **VS Code version recording** — writes `.github/vscode-version.txt` in each workspace folder on startup (supersedes `vscode-version-recorder`)
 3. **Status bar indicator** (v0.4.0+) — reads current task at startup (6s delay) using the coordinator pattern (AI Context Standard v0.10.0): if `WORKSPACE_STATUS.md` exists in any workspace folder, uses it as coordinator; otherwise falls back to `PROJECT_STATUS.md` in all folders; click to dismiss
