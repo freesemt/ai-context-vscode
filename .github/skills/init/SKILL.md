@@ -1,7 +1,7 @@
 ---
-agent: copilot
-description: Session initialization (VS Code version check)
-alwaysApply: true
+name: init
+description: "Session initialization (VS Code version check)"
+disable-model-invocation: true
 ---
 
 ## Step 1: Check VS Code Version
